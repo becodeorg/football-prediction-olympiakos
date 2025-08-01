@@ -1,0 +1,25 @@
+
+
+curl -X POST -H "Content-Type: text/csv" --data-binary @df_without_missings.csv http://localhost:7071/api/upload_football_matches_csv
+
+
+# step 1 : deploy resource first
+terraform init
+terraform plan --out main.tfplan
+terraform apply "main.tfplan"
+
+# Step 2 build and push image to ACR
+.\build_push_image.ps1 OlympiakosGroup Olympiakos dev
+
+.\build_push_image.ps1 -ResourceGroupName "OlympiakosGroup" -FunctionAppName "olympiakos" -DockerImageTag "dev"
+
+
+
+
+-----------------------------------------------------
+
+docker ps
+
+docker exec -it <ContainerId> bash
+
+in docker bash : /azure-functions-host/Microsoft.Azure.WebJobs.Script.WebHost 
