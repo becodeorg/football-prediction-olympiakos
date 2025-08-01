@@ -1,0 +1,8 @@
+*.zip
+.terraform*
+*.tfstate
+*.tfplan
+local.settings.json
+.venv
+__pycache__/
+terraform.tfstate.backup

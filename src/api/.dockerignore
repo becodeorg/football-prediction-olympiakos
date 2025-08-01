@@ -1,0 +1,6 @@
+local.settings.json
+.venv/
+__pycache__/
+*.pyc
+build_push_image.ps1
+run_local.ps1
