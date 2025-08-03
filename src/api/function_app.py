@@ -7,6 +7,7 @@ import io
 import datetime
 import pyodbc
 
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 @app.route(route="test", methods=["GET"])
 def test(req: func.HttpRequest) -> func.HttpResponse:
@@ -47,14 +48,7 @@ def get_datas(req: func.HttpRequest) -> func.HttpResponse:
     """
     logging.info('get_datas::Retrieving football matches from database using pyodbc.')
 
-    sql_connection_string = os.environ.get("SQL_CONNECTION_STRING_ODBC")
-    if not sql_connection_string:
-        logging.error("get_datas::SQL_CONNECTION_STRING environment variable is not set. Please ensure local.settings.json or Azure App Settings are configured.")
-        return func.HttpResponse(
-            json.dumps({"status": "error", "message": "Database connection string is missing. Please configure SQL_CONNECTION_STRING."}),
-            mimetype="application/json",
-            status_code=500
-        )
+    sql_connection_string = get_sql_connection_string()
 
     cnxn = None
     cursor = None
@@ -130,14 +124,7 @@ def upload_football_matches_csv(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('upload_football_matches_csv::Python HTTP trigger function processed a CSV upload request using pyodbc.')
 
     # Get connection string from environment variables
-    sql_connection_string = os.environ.get("SQL_CONNECTION_STRING_ODBC")
-    if not sql_connection_string:
-        logging.error("upload_football_matches_csv::SQL_CONNECTION_STRING_ODBC environment variable is not set. Please ensure local.settings.json or Azure App Settings are configured.")
-        return func.HttpResponse(
-            json.dumps({"status": "error", "message": "Database connection string is missing. Please configure SQL_CONNECTION_STRING_ODBC."}),
-            mimetype="application/json",
-            status_code=500
-        )
+    sql_connection_string = get_sql_connection_string()
 
     cnxn = None
     cursor = None
@@ -330,7 +317,67 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500
         )
     
+# ==============================================
+# ML Model Training and Saving
+# ==============================================
+@app.route(route="models/train", methods=["POST"])
+def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
+    """Train a simple model and save it to blob storage"""
 
+    logging.info('Training and saving model.')
+    from modules.loader.DataLoader import DataLoader
+    from modules.processor.DataProcessor import DataProcessor
+    from modules.model.LinRegModel import LinRegModel
+    from modules.ModelBlobStorage import ModelBlobStorage
+    try:
+        # Initialize DataLoader with SQL connection string
+        sql_connection_string = get_sql_connection_string()
+        data_loader = DataLoader(sql_connection_string=sql_connection_string)
+        data = data_loader.load_from_database()
+        if data:
+            logging.info("Data downloaded successfully.")
+        
+        else:
+            logging.error("Failed to download data.")
+            return
+
+        processor = DataProcessor()
+        X_train, X_test, y_train, y_test = processor.process_data(data) 
+        logging.info("Data processed successfully.")
+        # Train the model
+        logging.info("Training the model...")
+        model = LinRegModel()
+        performance =model.train(X_train, X_test, y_train, y_test)
+        logging.info("Model trained successfully.")
+        # Create model package with metadata
+        logging.info("Saving model to blob storage...")
+
+        model_metadata ={
+            "performance": performance,
+            "training_samples": {len(X_train)},
+            "content_type": "application/octet-stream"
+        }
+        logging.info(f"Model metadata: {model_metadata}")
+        # Save to blob storage
+        storage_helper = ModelBlobStorage()
+        model_name = "olympiakos_prediction_model"
+        logging.info(f"Saving model '{model_name}' to blob storage...")
+        blob_name = storage_helper.save_model(model,model_metadata, model_name)
+        logging.info(f"Model saved successfully to blob storage with name: {blob_name}")
+
+        return func.HttpResponse(
+                json.dumps({"status": "success", "message": f"Model Successfully trained for prediction.","performance": performance, "blob_name": blob_name}),
+                status_code=201,
+                mimetype="application/json"
+            )
+
+    except Exception as e:
+        logging.error(f"Error in train_and_save_model: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
 
 #--------------- UTILITY FUNCTIONS ---------------#
 def map_db_to_csv_format(db_record):
@@ -405,3 +452,15 @@ def map_db_to_csv_format(db_record):
             mapped_record[key] = value
     
     return mapped_record    
+
+def get_sql_connection_string():
+    """
+    Retrieves the SQL connection string from environment variables.
+    
+    Returns:
+        str: The SQL connection string.
+    """
+    sql_connection_string = os.environ.get("SQL_CONNECTION_STRING_ODBC")
+    if not sql_connection_string:
+        raise ValueError("SQL_CONNECTION_STRING_ODBC environment variable is not set.")
+    return sql_connection_string
