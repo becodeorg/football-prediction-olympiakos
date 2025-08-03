@@ -109,6 +109,8 @@ variable "HomeIp" {
   default     = "<YOUR_HOME_IP_HERE>"
 }
 
+
+
 variable "SubscriptionId" {
   description = "The Azure subscription ID to use for the resources."
   type        = string
@@ -120,6 +122,17 @@ variable "DockerImageTag" {
   description = "The Docker image tag for the Function App container."
   type        = string
   default     = "dev" # Or your desired default tag
+}
+
+variable "ModelBlobStorageContainerName" {
+  description = "The name of the blob container for storing ML models."
+  type        = string
+  default     = "models"
+}
+variable "LogsBlobStorageContainerName" {
+  description = "The name of the blob container for storing data."
+  type        = string
+  default     = "container-logs"
 }
 
 

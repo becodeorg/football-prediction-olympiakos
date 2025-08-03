@@ -13,7 +13,11 @@
       }
     },
     "logLevel": {
-      "default": "Information"
+      "default": "Trace",  
+      "Host.Results": "Trace",
+      "Function": "Trace", 
+      "Host.Aggregator": "Trace", 
+      "Function.Python.Worker": "Trace"
     }
   }
 }

@@ -30,6 +30,28 @@ resource "azurerm_storage_account" "StorageAccount" {
     environment = var.environment
   }
 }
+
+# Create a blob container for storing ML models
+resource "azurerm_storage_container" "models_container" {
+  name                  = var.ModelBlobStorageContainerName
+  storage_account_id  = azurerm_storage_account.StorageAccount.id
+  container_access_type = "private"  # Private access for security
+}
+resource "azurerm_storage_container" "logs_container" {
+  name                  = var.LogsBlobStorageContainerName
+  storage_account_name  = azurerm_storage_account.StorageAccount.name
+  container_access_type = "private"
+}
+
+# Grant the Function App's managed identity access to the storage account
+# resource "azurerm_role_assignment" "function_app_api_storage_blob_data" {
+#   scope                = azurerm_storage_account.StorageAccount.id
+#   role_definition_name = "Storage Blob Data Contributor"
+#   principal_id         = azurerm_linux_function_app.olympiakos_function_app.identity[0].principal_id
+
+#   depends_on = [azurerm_linux_function_app.olympiakos_function_app]
+# }
+
 # Create a container registry for the function app
 # This is used to store the Docker images for the function app
 resource "azurerm_container_registry" "acr" {
@@ -150,16 +172,15 @@ resource "azurerm_linux_function_app" "olympiakos_function_app" {
     "WEBSITE_RUN_FROM_PACKAGE"              = "0"
     always_on            = true
     "DOCKER_CUSTOM_IMAGE_NAME"             = "${azurerm_container_registry.acr.login_server}/${var.AppName}:${var.DockerImageTag}"
-    # --- Docker Image Configuration (moved here) ---
-    # DOCKER_IMAGE_NAME: The full name of your Docker image (e.g., myacr.azurecr.io/myfunctionapp:v1.0.0)
-    # "DOCKER_IMAGE_NAME"        = "${azurerm_container_registry.acr.login_server}/${var.AppName}:${var.DockerImageTag}"
-    # DOCKER_REGISTRY_USERNAME: The username for your ACR
-    # "DOCKER_REGISTRY_USERNAME" = azurerm_container_registry.acr.admin_username
-    # DOCKER_REGISTRY_PASSWORD: The password for your ACR
-    # "DOCKER_REGISTRY_PASSWORD" = azurerm_container_registry.acr.admin_password
-    # DOCKER_REGISTRY_URL: The login server of your ACR (without http/https)
-    # "DOCKER_REGISTRY_URL"      = "DOCKER|${azurerm_container_registry.acr.login_server}"
-    # --- End Docker Image Configuration ---
+    # Blob Storage Configuration
+    "STORAGE_ACCOUNT_NAME"                 = azurerm_storage_account.StorageAccount.name
+    "STORAGE_ACCOUNT_URL"                  = azurerm_storage_account.StorageAccount.primary_blob_endpoint
+    #"LOGS_CONTAINER_NAME"                  = azurerm_storage_container.logs_container.name
+    # Use managed identity for blob access (more secure than connection strings)
+    #"AZURE_CLIENT_ID"                      = "managed_identity"  # Special value for system-assigned identity
+    "AZURE_STORAGE_CONNECTION_STRING"       = azurerm_storage_account.StorageAccount.primary_connection_string
+    "MODELS_CONTAINER_NAME"                 = var.ModelBlobStorageContainerName
+    "LOGS_CONTAINER_NAME"                   = var.LogsBlobStorageContainerName
   }
 
   tags = {

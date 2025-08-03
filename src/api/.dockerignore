@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 build_push_image.ps1
 run_local.ps1
+build_push_image.ps1
+push_to_azure.ps1

@@ -19,7 +19,16 @@ param(
     [string]$AzureWebJobsStorage,
 
     [Parameter(Mandatory=$true)]
-    [string]$ApplicationInsightsConnectionString
+    [string]$ApplicationInsightsConnectionString,
+
+    [Parameter(Mandatory=$true)]
+    [string]$ModelContairerName,
+
+    [Parameter(Mandatory=$true)]
+    [string]$StorageAccountUrl,
+
+    [Parameter(Mandatory=$true)]
+    [string]$AzureStorageConnectionString
 )
 
 # Check if Docker is running
@@ -70,6 +79,9 @@ try {
         -e "SQL_CONNECTION_STRING_ODBC=$SqlConnectionStringOdbc" `
         -e "AzureWebJobsStorage=$AzureWebJobsStorage" `
         -e "APPLICATIONINSIGHTS_CONNECTION_STRING=$ApplicationInsightsConnectionString" `
+        -e "MODELS_CONTAINER_NAME=$ModelContairerName" `
+        -e "STORAGE_ACCOUNT_URL=$StorageAccountUrl" `
+        -e "AZURE_STORAGE_CONNECTION_STRING=$AzureStorageConnectionString" `
         --rm -it "$($ImageFullName)"
 } catch {
     Write-Error "Error: Failed to launch Docker container. Details: $($_.Exception.Message)"
