@@ -376,13 +376,14 @@ def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name(name="data_sync_timer")
-@app.timer_trigger(schedule="0 */1 * * * *", # schedule="0 0 1 * * 1",
+@app.timer_trigger(schedule="0 0 1 * * 1",#schedule="0 */1 * * * *",  
               arg_name="data_sync_timer",
               run_on_startup=False) 
 def data_sync_timer(data_sync_timer: func.TimerRequest) -> None:
     """
     Syncs the SQL table with the latest data from the CSV file.
     This function is called to ensure the SQL table is up-to-date with the latest match data.
+    Run on a schedule  every Monday at 1 AM.
     """
     logging.info('sync_sql_table::Syncing SQL table with latest data from CSV file.')
     try:
