@@ -6,6 +6,11 @@ import csv
 import io
 import datetime
 import pyodbc
+import requests
+from modules.loader.DataLoader import DataLoader
+from modules.processor.DataProcessor import DataProcessor
+from modules.model.LinRegModel import LinRegModel
+from modules.ModelBlobStorage import ModelBlobStorage
 
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -296,6 +301,11 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
     HTTP trigger function to receive data for a match and return a prediction.
     This function expects the match data in the request body as a JSON object.
     """
+    from modules.loader.DataLoader import DataLoader
+    from modules.processor.DataProcessor import DataProcessor
+    from modules.model.LinRegModel import LinRegModel
+    from modules.ModelBlobStorage import ModelBlobStorage
+    logging.info('predict::Python HTTP trigger function processed a prediction request.')
     try:
         # Read the data content from the request body as a UTF-8 string
         data = req.get_body().decode('utf-8')
@@ -303,6 +313,25 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
         # Parse the JSON data
         data = json.loads(data)
         logging.info(f'predict::Received data for prediction: {data}')
+
+        blob_model = ModelBlobStorage()
+
+        model_package = blob_model.load_model("olympiakos_prediction_model.pkl")
+
+        metadata = model_package.get("metadata", {})
+
+
+        logging.info(f"predict::Model metadata: {metadata}")
+
+        if not model_package:
+            logging.error("predict::Failed to load model from blob storage.")
+            return func.HttpResponse(
+                json.dumps({"status": "error", "message": "Model not found in blob storage."}),
+                mimetype="application/json",
+                status_code=404
+            )
+        logging.info("predict::Model loaded successfully from blob storage.")
+        
 
         return func.HttpResponse(
                 json.dumps({"status": "success", "message": f"Successfully received data and submitted {json.dumps(data)} for prediction."}),
@@ -325,45 +354,11 @@ def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
     """Train a simple model and save it to blob storage"""
 
     logging.info('Training and saving model.')
-    from modules.loader.DataLoader import DataLoader
-    from modules.processor.DataProcessor import DataProcessor
-    from modules.model.LinRegModel import LinRegModel
-    from modules.ModelBlobStorage import ModelBlobStorage
+    
     try:
-        # Initialize DataLoader with SQL connection string
-        sql_connection_string = get_sql_connection_string()
-        data_loader = DataLoader(sql_connection_string=sql_connection_string)
-        data = data_loader.load_from_database()
-        if data:
-            logging.info("Data downloaded successfully.")
-        
-        else:
-            logging.error("Failed to download data.")
-            return
-
-        processor = DataProcessor()
-        X_train, X_test, y_train, y_test = processor.process_data(data) 
-        logging.info("Data processed successfully.")
-        # Train the model
-        logging.info("Training the model...")
-        model = LinRegModel()
-        performance =model.train(X_train, X_test, y_train, y_test)
-        logging.info("Model trained successfully.")
-        # Create model package with metadata
-        logging.info("Saving model to blob storage...")
-
-        model_metadata ={
-            "performance": performance,
-            "training_samples": {len(X_train)},
-            "content_type": "application/octet-stream"
-        }
-        logging.info(f"Model metadata: {model_metadata}")
-        # Save to blob storage
-        storage_helper = ModelBlobStorage()
-        model_name = "olympiakos_prediction_model"
-        logging.info(f"Saving model '{model_name}' to blob storage...")
-        blob_name = storage_helper.save_model(model,model_metadata, model_name)
-        logging.info(f"Model saved successfully to blob storage with name: {blob_name}")
+    
+        blob_name,performance = train_and_save_model()
+       
 
         return func.HttpResponse(
                 json.dumps({"status": "success", "message": f"Model Successfully trained for prediction.","performance": performance, "blob_name": blob_name}),
@@ -379,7 +374,135 @@ def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
             headers={"Content-Type": "application/json"}
         )
 
+
+@app.function_name(name="data_sync_timer")
+@app.timer_trigger(schedule="0 */1 * * * *", # schedule="0 0 1 * * 1",
+              arg_name="data_sync_timer",
+              run_on_startup=False) 
+def data_sync_timer(data_sync_timer: func.TimerRequest) -> None:
+    """
+    Syncs the SQL table with the latest data from the CSV file.
+    This function is called to ensure the SQL table is up-to-date with the latest match data.
+    """
+    logging.info('sync_sql_table::Syncing SQL table with latest data from CSV file.')
+    try:
+       
+        logging.info(f'sync_sql_table::Timer trigger function executed at {datetime.datetime.now()}')   
+
+        data_loader = DataLoader()
+        # URL for the latest Belgian Jupiler League data (2025/2026 season)
+        csv_url = "https://www.football-data.co.uk/mmz4281/2526/B1.csv"
+
+        sql_connection_string = get_sql_connection_string()
+
+        stored_procedure_name = "dbo.UpsertFootballMatches"
+
+        # Call the main function to run the full pipeline
+        total_new_row = data_loader.process_and_insert_data(csv_url, sql_connection_string, stored_procedure_name)
+        if total_new_row == 0:
+            logging.info('sync_sql_table::No new rows were inserted into the SQL table.')
+        else:
+            logging.info(f'sync_sql_table::Total new rows inserted into the SQL table: {total_new_row}')
+            logging.info('sync_sql_table:Trigger training of the model with new data.')
+            train_and_save_model()
+        
+        logging.info(json.dumps({"status": "success", "message": "SQL table synced successfully."}))
+   
+        
+    except Exception as e:
+        logging.error(f'sync_sql_table::An error occurred while syncing SQL table: {e}', exc_info=True)
+        
+
+
 #--------------- UTILITY FUNCTIONS ---------------#
+def train_and_save_model():
+    """ 
+    Utility function to train and save the model.
+    """
+    model,performance,X_train_len = train_model()
+
+    # Create model package with metadata
+    logging.info("Saving model to blob storage...")
+
+
+    blob_name = save_model(model, performance, X_train_len, "olympiakos_prediction_model.pkl")
+
+    return blob_name, performance
+
+def save_model(model, performance,X_train_len, model_name):
+    """
+    Save the trained model to blob storage with metadata.
+    
+    Args:
+        model: The trained model object to be saved.
+        metadata: Metadata associated with the model.
+        model_name: Name of the model to be saved in blob storage.
+        
+    Returns:
+        The name of the blob where the model is saved.
+    """
+    try:
+        model_metadata ={
+            "performance": performance,
+            "training_samples": {X_train_len},
+            "content_type": "application/octet-stream"
+        }
+       
+        logging.info(f"save_model-> Model metadata: {model_metadata}")
+        # Save to blob storage
+        storage_helper = ModelBlobStorage()
+        model_name = "olympiakos_prediction_model"
+        logging.info(f"Saving model '{model_name}' to blob storage...")
+        blob_name = storage_helper.save_model(model,model_metadata, model_name)
+        logging.info(f"save_model->Model saved successfully to blob storage with name: {blob_name}")
+        
+        
+        return blob_name
+    except Exception as e:
+        logging.error(f"ModelBlobStorage::save_model -> Error saving model '{model_name}' to blob storage: {str(e)}", exc_info=True)
+        raise e
+    
+def train_model():
+    """
+    Utility function to train and save the model.
+    This function can be called from the Azure portal or other triggers.
+
+    Returns
+        model: The trained model object.
+        performance: The performance metrics of the trained model.
+    """
+    logging.info('train_model-> Training and saving model.')
+    try:
+        # Initialize DataLoader with SQL connection string
+        sql_connection_string = get_sql_connection_string()
+        data_loader = DataLoader(sql_connection_string=sql_connection_string)
+        data = data_loader.load_from_database()
+        if data:
+            logging.info("train_model-> Data downloaded successfully.")
+        
+        else:
+            logging.error("train_model-> Failed to download data.")
+            return
+
+        processor = DataProcessor()
+        X_train, X_test, y_train, y_test = processor.process_data(data) 
+        logging.info("train_model->Data processed successfully.")
+        # Train the model
+        logging.info("train_model->Training the model...")
+        model = LinRegModel()
+        performance =model.train(X_train, X_test, y_train, y_test)
+        logging.info("train_model->Model trained successfully.")
+        # Create model package with metadata
+        logging.info("train_model->Saving model to blob storage...")
+
+        return model,performance,len(X_train)
+    except Exception as e:
+        logging.error(f"trai_model->Error in train_model: {str(e)}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        )
 def map_db_to_csv_format(db_record):
     """
     Maps database column names back to CSV format column names.
@@ -464,3 +587,8 @@ def get_sql_connection_string():
     if not sql_connection_string:
         raise ValueError("SQL_CONNECTION_STRING_ODBC environment variable is not set.")
     return sql_connection_string
+
+
+
+
+
