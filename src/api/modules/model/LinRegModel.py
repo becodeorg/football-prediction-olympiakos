@@ -17,17 +17,20 @@ class LinRegModel (AbstractModel):
         if model is not None:
             self.model = model
         else:
-            self.model = LogisticRegression(multi_class='multinomial', max_iter=1000, random_state=42)
+            self.model = LogisticRegression(C=0.08858667904100823, max_iter=1000, penalty='l1', solver='saga')
 
-    def train(self, X_train, X_test, y_train, y_test):
+    def train(self, X_train, X_test, y_train, y_test,assess_predictions=True):
         """
         Train the linear regression model using the provided training data.
         """
         # Dictionary to store model performance
         performance = {}
 
-        #self.model = LogisticRegression(multi_class='multinomial', max_iter=1000, random_state=42)
         self.model.fit(X_train, y_train)
+        
+        if not assess_predictions:
+            return
+
         y_pred = self.model.predict(X_test)
 
         # For log loss and brier score, we need predicted probabilities
@@ -51,29 +54,25 @@ class LinRegModel (AbstractModel):
             try:
                 logloss = log_loss(y_test, y_proba)
                 # Brier score is typically used for binary classification, but we can calculate it for each class and average
-                if y_proba.shape[1] == 3:
-                    y_test_bin = np.eye(3)[y_test]
-                    brier = np.mean([
-                        brier_score_loss(y_test_bin[:, i], y_proba[:, i])
-                        for i in range(3)
-                    ])
+                brier = brier_score_loss(y_test, y_proba, labels=[-1, 0, 1])
             except Exception as e:
-                logging.info(f"LinRegModel::train -> Error calculating logloss or Brier for LogisticRegression: {e}")
+                print(f"Error calculating logloss or Brier for LogisticRegression: {e}")
 
-        performance= {
-            'Accuracy': accuracy,
-            'Precision': precision,
-            'Recall': recall,
-            'F1-Score': f1,
-            'LogLoss': logloss,
-            'BrierScore': brier
+        performance = {
+            'Accuracy': "{:.5f}".format(accuracy),
+            'Precision': "{:.5f}".format(precision),
+            'Recall': "{:.5f}".format(recall),
+            'F1-Score': "{:.5f}".format(f1),
+            'LogLoss': "{:.5f}".format(logloss),
+            'BrierScore': "{:.5f}".format(brier)
         }
 
         # Print classification report
-        logging.info(f"LinRegModel::train -> \nClassification Report for LogisticRegression:\n")
-        logging.info("LinRegModel::train -> \n"+classification_report(y_test, y_pred, target_names=['Away Win', 'Draw', 'Home Win']))
+        logging.info(f"\nClassification Report for LogisticRegression:\n")
+        logging.info("\n"+classification_report(y_test, y_pred, target_names=[['Loss', 'Draw', 'Win'][c + 1] for c in self.model.classes_]))
+
         # 6. Model Evaluation
-        logging.info("\nLinRegModel::train -> Model Performance Summary:\n"+json.dumps(performance, indent=4))
+        logging.info("\nModel Performance Summary:\n"+json.dumps(performance, indent=4))
         return performance
 
         
@@ -91,13 +90,27 @@ class LinRegModel (AbstractModel):
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
     
-    def predict(self, X):
+    def predict(self, samples):
         """
         Predict the outcomes using the trained model.
         :param X: Input features for prediction.
         :return: Predicted outcomes.
         """
-        if self.model is None:
-            raise ValueError("Model has not been trained yet.")
-        
-        return self.model.predict(X)
+        results = []
+        for sample in samples: # sample - pd.DataFrame
+            # Predict generally returns 2 outcomes: for homeTeam - awayTeam and awayTeam - hometeam
+            logging.info(f"Predicting for sample: {sample}")
+            result = self.model.predict_proba(sample)
+            if sample.shape[0] == 2:
+                # Reverse the order for venue = 0 (first prediction) due to Loss = -1, Draw = 0, Win = 1
+                result[0] = np.flip(result[0])
+                # Average the results for both predictions
+                results.append(np.mean(result, axis = 0))
+            elif sample.shape[0] == 1:
+                if int(sample.iloc[0]['venue']) == 0:
+                    result[0] = np.flip(result[0])
+                results.append(result[0])
+            else:
+                results.append(np.array([]))
+                
+        return results

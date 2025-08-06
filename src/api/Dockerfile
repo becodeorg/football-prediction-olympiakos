@@ -44,6 +44,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY host.json .
 COPY function_app.py .
 COPY modules ./modules
+COPY data ./data
 # This is the port that Azure Functions will use to communicate with your app.
 # Note: Azure Functions will automatically map this to the appropriate port in the Azure environment.
 EXPOSE 80
