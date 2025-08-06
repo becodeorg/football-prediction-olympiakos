@@ -11,6 +11,7 @@ from modules.loader.DataLoader import DataLoader
 from modules.processor.DataProcessor import DataProcessor
 from modules.model.LinRegModel import LinRegModel
 from modules.ModelBlobStorage import ModelBlobStorage
+import pandas as pd
 
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -319,6 +320,11 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
         model_package = blob_model.load_model("olympiakos_prediction_model.pkl")
 
         metadata = model_package.get("metadata", {})
+        model = LinRegModel(model=model_package.get("model"))
+        logging.info(f"predict::Loaded model with metadata: {metadata}")
+       
+        df = pd.DataFrame([data])
+        logging.info(f"predict::Data received for prediction: {df}")
 
 
         logging.info(f"predict::Model metadata: {metadata}")
@@ -376,7 +382,7 @@ def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name(name="data_sync_timer")
-@app.timer_trigger(schedule="0 0 1 * * 1",#schedule="0 */1 * * * *",  
+@app.timer_trigger(schedule="0 */1 * * * *", #schedule="0 0 1 * * 1",# 
               arg_name="data_sync_timer",
               run_on_startup=False) 
 def data_sync_timer(data_sync_timer: func.TimerRequest) -> None:
