@@ -12,9 +12,12 @@ class LinRegModel (AbstractModel):
     This class implements the train method to fit a linear regression model.
     """
 
-    def __init__(self):
+    def __init__(self,model=None):
         super().__init__()
-        self.model = LogisticRegression(multi_class='multinomial', max_iter=1000, random_state=42)
+        if model is not None:
+            self.model = model
+        else:
+            self.model = LogisticRegression(multi_class='multinomial', max_iter=1000, random_state=42)
 
     def train(self, X_train, X_test, y_train, y_test):
         """

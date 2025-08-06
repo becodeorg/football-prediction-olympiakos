@@ -101,5 +101,6 @@ BEGIN
     DECLARE @InsertedRows int;
     SET @InsertedRows = @@ROWCOUNT;
     PRINT CONCAT(@InsertedRows, ' new rows inserted into dbo.FootballMatches.');
+    SELECT @InsertedRows AS InsertedRowsCount;
 END;
 GO

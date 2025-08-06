@@ -1,121 +1,169 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/2jqnWWV_)
-# Football Match Prediction Project (Belgian Jupiler Pro League)
+# **Football Prediction Project - Olympiakos**
 
-- Repository: `football-prediction`
-- Type of Challenge: `Consolidation`
-- Duration: `7 days`
-- Deadline: `dd/mm/yyyy 3PM`
-- Team challenge: Team (4)
+A comprehensive machine learning platform for predicting football match outcomes, built on Azure infrastructure using Azure Functions and containerized deployments.
 
-## Learning Objectives
+## 🎯 **Project Overview**
 
-Build an end-to-end system that predicts football match outcomes using scraping, scheduling, machine learning, and data visualization.
+This project implements an end-to-end machine learning pipeline for football match prediction, specifically focusing on Belgian Jupiler League data. The system automatically ingests match data, processes it, trains prediction models, and provides API endpoints for predictions and data management.
 
-At the end of this challenge, you should:
+## 🏗️ **Architecture**
 
-- Be able to scrape and process data from football websites.
-- Be able to train a machine learning model on historical match data.
-- Be able to create a Streamlit app for live data visualization and predictions.
-- Be able to manage the entire data pipeline, scheduling for automation.
+The project consists of several key components:
 
-## The Mission
+### **Infrastructure (Terraform)**
+- **Azure Resource Group**: Contains all project resources
+- **Azure SQL Database**: Stores football match data and statistics
+- **Azure Container Registry (ACR)**: Hosts Docker images for the function app
+- **Azure Functions**: Serverless compute for API endpoints and ML operations
+- **Azure Storage Account**: Blob storage for ML models and logs
+- **Application Insights**: Monitoring and logging
 
-Your mission is to build a prediction system for the Belgian Jupiler Pro League football matches. You'll combine historical match data with scraped real-time data (odds, recent matches) to predict the outcome of upcoming games.
+### Application Components
 
-### Dataset
+#### **1. API Layer (`src/api/function_app.py`)**
+Azure Functions providing REST endpoints:
 
-An old CSV containing match results from 5 years will be provided it comes from [this website](https://www.football-data.co.uk/), with the following key columns:
+- `GET /api/test` - Health check endpoint
+- `GET /api/get_datas` - Retrieve football match data with CSV-formatted column names
+- `POST /api/upload_football_matches_csv` - Upload CSV data to database
+- `POST /api/predict` - Make predictions using trained ML models
+- `POST /api/models/train` - Manually trigger model training
+- **Timer Function** - Automated data synchronization (runs every monday at 1AM)
 
-- Date = Match Date (dd/mm/yy)
-- Time = Match Kick-off Time
-- HomeTeam = Home Team
-- AwayTeam = Away Team
-- FTHG = Full Time Home Team Goals
-- FTAG = Full Time Away Team Goals
-- FTR = Full Time Result (H=Home Win, D=Draw, A=Away Win)
+#### **2. Data Processing Pipeline**
 
-Additional statistics are included (shots, fouls, cards, etc.), which you can use to train your model. There also are historical odds given for each matches, the definitions of all columns is given [here](https://www.football-data.co.uk/notes.txt).
+**DataLoader** (`src/api/modules/loader/DataLoader.py`)
+- Fetches CSV data from external sources (football-data.co.uk)
+- Loads data from Azure SQL Database
+- Handles data format conversion and validation
 
-**NOTE**: There is no point in using the stats of match X to predict the outcome of match X. If you try to predict the outcome of a football game before it happens, you have to look at how each team has been performing recently. You could, for example, use an average of the outcomes and stats of previous matches S,T,U,V,W to predict the outcome of X. Hence, this dataset is not a FEATURES | TARGET dataset. These have to be carved out.
+**DataProcessor** (`src/api/modules/processor/DataProcessor.py`)
+- Feature engineering for team statistics (goals, win rates, shots on target)
+- Data preprocessing and normalization
+- Train/test data splitting
 
-This dataset is what the Data Engineers have to re-generate for the Data Analysts and Scientists. Consider it the bridge in the team.
+#### **3. Machine Learning Pipeline**
 
-### Must-have features
+**AbstractModel** (`src/api/modules/model/AbstractModel.py`)
+- Base class defining the ML model interface
 
-- **Model Training and Scheduling Retraining**:
-  - Train a machine learning model on historical match data to predict the outcome of future matches
+**LinRegModel** (`src/api/modules/model/LinRegModel.py`)
+- Logistic Regression implementation for match outcome prediction
+- Supports multi-class classification (Home Win/Draw/Away Win)
+- Performance metrics calculation
 
-- **Dashboard**:
-  - Display upcoming week matches and predicted outcomes using a machine learning model.
-  - Show outcome odds for the upcoming matches.
-  - Display stats for each team over the last 5 matches (goals, shots, etc.).
+**ModelBlobStorage** (`src/api/modules/ModelBlobStorage.py`)
+- Manages ML model persistence in Azure Blob Storage
+- Handles model versioning and metadata
 
-- **Scraper**:
-  - Build a scraper to fetch recent match data.
+## 🔄 **Data Flow**
 
-- **Automation**:
-  - Automate scraping using a scheduling tool to update the data periodically (Airflow, python scheduler, Azure Functions timer_trigger).
-  - You could also periodically retrain the model with recent match data and updated statistics.
+1. **Data Ingestion**: Timer function automatically fetches latest match data from external CSV sources
+2. **Data Processing**: Raw CSV data is cleaned, validated, and stored in Azure SQL Database
+3. **Feature Engineering**: Historical team statistics are calculated for prediction features
+4. **Model Training**: When new data is available, ML models are retrained automatically
+5. **Model Storage**: Trained models are versioned and stored in Azure Blob Storage
+6. **Predictions**: API endpoints serve real-time predictions using the latest trained model
 
-### Nice-to-have features
+## 🚀 **Deployment**
 
-- **Automated Betting Simulation**:
-  - Make a scraper on betting odds for matches ahead of time to choose what to bet on.
+The project uses Infrastructure as Code (IaC) with Terraform for automated deployment:
 
-- **Model Exploration**:
-  - Investigate adding additional features (e.g., possession stats, player absences) to improve model accuracy. Or notify things on the dashboard
+### **Prerequisites**
+- Azure CLI installed and configured
+- Terraform >= 1.0
+- Docker Desktop
+- SQL Server command-line tools (sqlcmd)
 
-- **Database**:
-  - Historical match data could be stored in a database if needed
+### **Deployment Steps**
 
-### Some tips and content to support you
+1. **Deploy Infrastructure**:
+```bash
+terraform init
+terraform plan --out main.tfplan
+terraform apply "main.tfplan"
+```
 
-- **Hosting database**: 
-  - [Heroku Postgres](https://www.heroku.com/postgres)
-  - [ElephantSQL](https://www.elephantsql.com/)
-  - [SummaryOfOptions](https://gist.github.com/bmaupin/0ce79806467804fdbbf8761970511b8c)
-  - [AzureSQLDatabase](https://azure.microsoft.com/en-us/products/azure-sql/database)
+2. **Build and Push Docker Image**:
+```powershell
+.\build_push_image.ps1 -ResourceGroupName "OlympiakosGroup" -FunctionAppName "olympiakos" -DockerImageTag "dev"
+```
+This script will build and push image to Azure Container registry
 
-- **Bookmaker odds**: Scrape odds from the following sources:
-  - [WhoScored](https://www.whoscored.com/)
-  - [SportsGambler](https://www.sportsgambler.com/)
-  - [OddsChecker](https://www.oddschecker.com/)
-  - [BetFirst](https://betfirst.dhnet.be/)
+3. **Run Locally (Optional)**:
+```powershell
+.\run_local.ps1
+```
+You will be prompt to give resources informations (Resource group, app name, app version, connection string,...)
 
-## Deliverables
 
-1. **GitHub Repository**:
-   - Publish your code on GitHub.
-   - Include a README with:
-     - Project description
-     - Installation steps
-     - Usage instructions
-     - (Optional visuals)
-     - (Contributors)
-     - (Timeline)
-     - (Challenges and solutions)
+## 🐳 **Containerization**
 
-2. **App**:
-   - A dashboard displaying match predictions, team stats, and upcoming matches with odds.
+The application is fully containerized using Docker:
 
-3. **Presentation**:
-   - How did you approach the problem?
-   - Who did what in the team?
-   - What were the challenges and how did you solve them?
+- **Base Image**: `mcr.microsoft.com/azure-functions/python:4-python3.10`
+- **Dependencies**: Includes ODBC drivers for SQL Server connectivity
+- **Container Registry**: Azure Container Registry for image storage
+- **Deployment**: Azure Functions with container deployment
 
-### Steps
+## 📊 **Data Schema**
 
-1. **Set up repository** and study the project requirements.
-2. **Split the work**:
-   - Build a web scraper. - DE
-   - Set up the hosting. - DE
-   - Automate scraping and model updates using a scheduling tool. - DE
-   - Train your prediction model using historical data. - DA
-   - Build and deploy the dashboard. - DA
+The system processes football match data with the following key attributes:
 
-## A final note of encouragement
+- **Match Information**: Date, time, teams, division
+- **Match Results**: Full-time and half-time scores and results
+- **Statistics**: Shots, fouls, corners, cards for both teams
+- **Betting Odds**: Various betting market odds for prediction features
 
-_"Success is not the key to happiness. Happiness is the key to success. If you love what you are doing, you will be successful."_
-\- Albert Schweitzer
+## 🔧 **Configuration**
 
-![You've got this!](https://i.giphy.com/media/JWuBH9rCO2uZuHBFpm/giphy.gif)
+Key configuration files:
+
+- `local.settings.json` - Local development settings
+- `host.json` - Azure Functions configuration
+- `requirements.txt` - Python dependencies
+- `variables.tf` - Terraform variable definitions
+
+## 📈 **Monitoring**
+
+- **Application Insights**: Performance monitoring and error tracking
+- **Azure Function Logs**: Detailed execution logs
+- **SQL Database Metrics**: Database performance monitoring
+
+## 🔐 **Security**
+
+- **Managed Identity**: Secure access to Azure resources
+- **SQL Firewall Rules**: Restricted database access
+- **Connection Strings**: Secure storage of credentials
+- **Private Blob Storage**: Restricted access to ML models
+
+## 🧪 **Testing**
+
+Test files located in `src/test/`:
+- `test_api.py` - API endpoint testing
+
+## 📝 **Usage Examples**
+
+### **Upload Match Data**
+```bash
+curl -X POST -H "Content-Type: text/csv" --data-binary @match_data.csv http://localhost:7071/api/upload_football_matches_csv
+```
+
+### **Get Match Data**
+```bash
+curl -X GET http://localhost:7071/api/get_datas
+```
+
+### **Make Prediction**
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"HomeTeam": "...","AwayTeam":"...","Date":"..."}' http://localhost:7071/api/predict
+```
+
+## 🤝 **Contributing**
+
+ **Project team members:** 
+
+- ##### *Data Analyst*   : [**Elsarrive**](https://github.com/elsarrive)
+- ##### *Data Scientist* : [**DieuHang88**](https://github.com/dieuhang88)
+- ##### *Data Scientist* : [**Olessia179**](https://github.com/olesia179)
+- ##### *Data Engineer*  : [**Fillinger66**](https://github.com/Fillinger66)
