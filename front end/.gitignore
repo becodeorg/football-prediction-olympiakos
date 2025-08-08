@@ -1,0 +1,10 @@
+# datas
+data/*
+*.json 
+
+# unusefull
+*.ipynb
+data-analysis/*
+
+# python
+__pycache__/

@@ -1,0 +1,7 @@
+[theme]
+base="dark"                   # active le mode sombre
+primaryColor="#d72020ff"        # couleur de tes widgets
+backgroundColor="#f9f9f9ff"     # arrière-plan principal
+secondaryBackgroundColor="#e8e8e8ff"   # arrières-plans secondaires
+textColor="#303030ff"           # couleur du texte
+font="helvetica"             # police (optional)
