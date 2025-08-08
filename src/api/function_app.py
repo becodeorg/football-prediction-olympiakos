@@ -302,47 +302,66 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
     HTTP trigger function to receive data for a match and return a prediction.
     This function expects the match data in the request body as a JSON object.
     """
-    from modules.loader.DataLoader import DataLoader
-    from modules.processor.DataProcessor import DataProcessor
-    from modules.model.LinRegModel import LinRegModel
-    from modules.ModelBlobStorage import ModelBlobStorage
     logging.info('predict::Python HTTP trigger function processed a prediction request.')
     try:
         # Read the data content from the request body as a UTF-8 string
-        data = req.get_body().decode('utf-8')
+        post_data = req.get_body().decode('utf-8')
         logging.info('predict::received data successfully.')
         # Parse the JSON data
-        data = json.loads(data)
-        logging.info(f'predict::Received data for prediction: {data}')
+        post_data = json.loads(post_data)
+
+        if not post_data:
+            logging.error('predict::No data provided for prediction.')
+            return func.HttpResponse(
+                json.dumps({"status": "error", "message": "No data provided for prediction."}),
+                mimetype="application/json",
+                status_code=400
+            )
+        if not post_data["HomeTeam"] or not post_data["AwayTeam"] or not post_data["Date"] or not post_data["Time"] :
+            logging.error(f'predict::Missing fields.{{"HomeTeam": {post_data["HomeTeam"]}, "AwayTeam": {post_data["AwayTeam"]}, "Date": {post_data["Date"]}, "Time": {post_data["Time"]}}}')
+            return func.HttpResponse(
+                json.dumps({"status": "error", "message": "Missing parameters. Check post data..."}),
+                mimetype="application/json",
+                status_code=400
+            )
+
+        logging.info(f'predict::Received data for prediction: {post_data}')
 
         blob_model = ModelBlobStorage()
 
         model_package = blob_model.load_model("olympiakos_prediction_model.pkl")
 
         metadata = model_package.get("metadata", {})
-        model = LinRegModel(model=model_package.get("model"))
+        model = model_package.get("model")#LinRegModel(model=model_package.get("model"))
         logging.info(f"predict::Loaded model with metadata: {metadata}")
-       
-        df = pd.DataFrame([data])
-        logging.info(f"predict::Data received for prediction: {df}")
+        logging.info(f'predict::Model loaded successfully: {type(model)}')
 
-
-        logging.info(f"predict::Model metadata: {metadata}")
-
-        if not model_package:
-            logging.error("predict::Failed to load model from blob storage.")
-            return func.HttpResponse(
-                json.dumps({"status": "error", "message": "Model not found in blob storage."}),
-                mimetype="application/json",
-                status_code=404
-            )
-        logging.info("predict::Model loaded successfully from blob storage.")
+        connection_string = get_sql_connection_string()
+        data_loader = DataLoader(sql_connection_string=connection_string)
+        data = data_loader.load_from_database()
+        if data:
+            logging.info("Data loaded successfully.")
         
+        else:
+            logging.error("Failed to load data.")
+            return
+
+        processor = DataProcessor()
+        #X_train, X_test, y_train, y_test = processor.process_data(data)
+
+        samples = processor.get_samples_to_predict_from_json(data, json.dumps([post_data]))
+        logging.info(f'predict::Samples for prediction: {samples}')
+        results=[]
+        results = model.predict(samples)
+        # Convert each NumPy array in the results list to a standard Python list
+        serializable_results = [arr.tolist() for arr in results]
+        logging.info(f'predict::Prediction results: {json.dumps(serializable_results, indent=2)}')
 
         return func.HttpResponse(
-                json.dumps({"status": "success", "message": f"Successfully received data and submitted {json.dumps(data)} for prediction."}),
-                mimetype="application/json"
-            )
+            json.dumps({"status": "success", "message": "Prediction completed successfully.", "results": serializable_results[0]}),
+            mimetype="application/json",
+            status_code=200
+        )
 
     except Exception as e:
         logging.error(f"predict::An unexpected error occurred during predict function execution: {e}", exc_info=True)
@@ -382,7 +401,7 @@ def train_and_save_model(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name(name="data_sync_timer")
-@app.timer_trigger(schedule="0 */1 * * * *", #schedule="0 0 1 * * 1",# 
+@app.timer_trigger(schedule="0 0 1 * * 1",# schedule="0 */1 * * * *", #
               arg_name="data_sync_timer",
               run_on_startup=False) 
 def data_sync_timer(data_sync_timer: func.TimerRequest) -> None:
