@@ -11,7 +11,7 @@ from modules.loader.DataLoader import DataLoader
 from modules.processor.DataProcessor import DataProcessor
 from modules.model.LinRegModel import LinRegModel
 from modules.ModelBlobStorage import ModelBlobStorage
-import pandas as pd
+import numpy as np
 
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -351,8 +351,13 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
 
         samples = processor.get_samples_to_predict_from_json(data, json.dumps([post_data]))
         logging.info(f'predict::Samples for prediction: {samples}')
-        results=[]
-        results = model.predict(samples)
+        
+        result = model.predict(samples)
+        results = []
+        for i in range(0, len(result), 2):
+            result[i] = np.flip(result[i])
+            results.append(np.mean([result[i], result[i + 1]], axis = 0))
+            
         # Convert each NumPy array in the results list to a standard Python list
         serializable_results = [arr.tolist() for arr in results]
         logging.info(f'predict::Prediction results: {json.dumps(serializable_results, indent=2)}')
