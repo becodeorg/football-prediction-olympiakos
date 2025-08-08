@@ -145,7 +145,7 @@ class DataProcessor:
         test = df_with_avg[df_with_avg['Date'] > current_date]
 
         predictors = ['venue', # , 'opp_code','team_code', 'avg_odds'
-              'shots', 'shots_on_target', 'fouls', 'corners', 'yellow_cards', 'red_cards', 
+              #'shots', 'shots_on_target', 'fouls', 'corners', 'yellow_cards', 'red_cards', 
               'h2h_home_win', 'h2h_home_loss', 'h2h_guest_win', 'h2h_guest_loss']
         predictors += [f"{col}_avg{window}" for window in [5, 10, 15] for col in cols_4_avg]
 
@@ -185,7 +185,7 @@ class DataProcessor:
         df = df.fillna(0)
 
         predictors = ['venue', # , 'opp_code','team_code', 'avg_odds'
-              'shots', 'shots_on_target', 'fouls', 'corners', 'yellow_cards', 'red_cards', 
+              #'shots', 'shots_on_target', 'fouls', 'corners', 'yellow_cards', 'red_cards', 
               'h2h_home_win', 'h2h_home_loss', 'h2h_guest_win', 'h2h_guest_loss']
         predictors += [f"{col}_avg{window}" for window in [5, 10, 15] for col in cols_4_avg]
 
